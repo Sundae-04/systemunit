@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AR Computer System Unit</title>
+<script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: Arial, Helvetica, sans-serif; }
+  * { box-sizing: border-box; }
+
+  /* Top bar: part list */
+  #bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+    display: flex; gap: 6px; overflow-x: auto; padding: 8px;
+    background: rgba(0,0,0,.55);
+  }
+  .chip {
+    flex: 0 0 auto; border: 0; border-radius: 16px; padding: 6px 12px;
+    background: #2b3340; color: #fff; font-size: 13px; cursor: pointer;
+    border-left: 8px solid var(--c, #888);
+  }
+  .chip.on { background: #ffd400; color: #000; }
+
+  #status {
+    position: fixed; top: 52px; left: 8px; z-index: 999;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 12px;
+    padding: 4px 10px; border-radius: 10px;
+  }
+  #status.found { background: rgba(20,140,60,.85); }
+
+  /* Bottom panel */
+  #panel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 999;
+    background: rgba(15,20,28,.93); color: #eef2f7;
+    border-top-left-radius: 14px; border-top-right-radius: 14px;
+    max-height: 48vh; display: flex; flex-direction: column;
+  }
+  #tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 10px 4px; }
+  #tools button {
+    border: 0; border-radius: 8px; padding: 6px 10px; font-size: 13px;
+    background: #3a4556; color: #fff; cursor: pointer;
+  }
+  #tools button.active { background: #1f9d55; }
+  #info { padding: 4px 14px 14px; overflow-y: auto; font-size: 14px; line-height: 1.45; }
+  #info.hide { display: none; }
+  #info h2 { margin: 4px 0 2px; font-size: 20px; }
+  #info .tag {
+    display: inline-block; background: #ffd400; color: #000; font-size: 11px;
+    font-weight: bold; padding: 2px 8px; border-radius: 10px; margin-bottom: 6px;
+  }
+  #info h3 { margin: 10px 0 2px; font-size: 13px; color: #ffd400; text-transform: uppercase; letter-spacing: .5px; }
+  #info ul { margin: 2px 0 0; padding-left: 20px; }
+  #info p { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<div id="bar"></div>
+<div id="status">Point the camera at the Hiro marker</div>
+
+<div id="panel">
+  <div id="tools">
+    <button id="bPrev">&lt; Prev</button>
+    <button id="bNext">Next &gt;</button>
+    <button id="bLabels" class="active">Labels</button>
+    <button id="bSpin">Spin</button>
+    <button id="bSmall">Size -</button>
+    <button id="bBig">Size +</button>
+    <button id="bHide">Hide info</button>
+  </div>
+  <div id="info"></div>
+</div>
+
+<a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" vr-mode-ui="enabled: false">
+  <a-light type="ambient" color="#ffffff" intensity="0.8"></a-light>
+  <a-light type="directional" color="#ffffff" intensity="0.8" position="1 3 2"></a-light>
+
+  <a-marker id="marker" preset="hiro">
+    <a-entity id="root" scale="0.3 0.3 0.3">
+      <a-entity id="inner" position="-0.25 0 0.15"></a-entity>
+    </a-entity>
+  </a-marker>
+
+  <a-entity camera cursor="rayOrigin: mouse; fuse: false" raycaster="objects: .clickable; far: 100"></a-entity>
+</a-scene>
+
+<script>
+/* ------------------------------------------------------------------
+   PART DATA  (edit the text here in Notepad to change descriptions)
+   prim types:  box  s:[width,height,depth]
+                cylinder  s:[radius,height]
+                torus  s:[radius,tube]
+   p = position [x,y,z], c = color, r = rotation [x,y,z]
+------------------------------------------------------------------- */
+const PARTS = [
+  {
+    id: "case", name: "Case (Chassis)", short: "Case", type: "Enclosure", color: "#9fb3c8",
+    label: [-1.0, 0.08, 1.7],
+    what: "The metal and plastic box that holds all the other parts of the computer. It is also called the chassis or tower.",
+    does: [
+      "Holds and protects the components from dust, bumps and spills",
+      "Has mounting points (standoffs, drive bays, slots) for every part",
+      "Guides airflow through vents and fan mounts to keep parts cool",
+      "Provides the front-panel power button, reset button, USB and audio ports",
+      "Shields the electronics from electromagnetic interference (EMI)"
+    ],
+    why: "Without a case, the parts would be exposed to damage, dust and static electricity. Its size (ATX, micro-ATX, mini-ITX) decides which motherboard and parts fit, and its airflow design strongly affects temperatures.",
+    connects: "Motherboard standoffs, PSU bay, drive bays, fan mounts and the front-panel header.",
+    prims: [
+      { t: "box", s: [4.5, 1.3, 4.1], p: [0.25, 0.6, -0.15], c: "#9fb3c8", wire: true },
+      { t: "box", s: [4.5, 0.03, 4.1], p: [0.25, -0.03, -0.15], c: "#1b2430", o: 0.55 }
+    ]
+  },
+  {
+    id: "mobo", name: "Motherboard", short: "Motherboard", type: "Main circuit board", color: "#1e7b3a",
+    label: [-0.45, 0.12, 0.42],
+    what: "The main circuit board. Every other part plugs into it or is connected to it.",
+    does: [
+      "Provides the CPU socket, RAM slots, PCIe slots, SATA and M.2 connectors",
+      "Carries data between all components through the chipset and buses",
+      "Distributes power from the PSU to the parts",
+      "Stores the BIOS/UEFI firmware that starts up the computer",
+      "Provides the rear I/O ports (USB, audio, LAN, video)"
+    ],
+    why: "It is the backbone of the system. Its socket, chipset and slots decide which CPU, RAM and expansion cards you can use, and how far you can upgrade later.",
+    connects: "CPU, RAM, GPU, storage drives, PSU, fans, CMOS battery and the case front panel.",
+    prims: [
+      { t: "box", s: [2.0, 0.06, 2.0], p: [-0.6, 0.03, 0.1], c: "#1e7b3a" },
+      { t: "box", s: [0.3, 0.05, 0.3], p: [-0.55, 0.085, -0.1], c: "#333b45" },
+      { t: "box", s: [1.2, 0.05, 0.1], p: [-0.6, 0.085, 0.78], c: "#15181d" }
+    ]
+  },
+  {
+    id: "cpu", name: "CPU (Processor)", short: "CPU", type: "Processing", color: "#c9c9c9",
+    label: [-1.2, 0.18, -0.75],
+    what: "The Central Processing Unit, the brain of the computer. It is a small chip that sits in the motherboard socket.",
+    does: [
+      "Fetches, decodes and executes program instructions",
+      "Performs calculations and logic decisions",
+      "Coordinates the work of the other parts",
+      "Its speed depends on clock speed (GHz), number of cores and threads, and cache size"
+    ],
+    why: "Every program depends on it. A faster CPU with more cores makes the whole system more responsive, especially for multitasking and heavy work.",
+    connects: "CPU socket on the motherboard, with the CPU cooler on top.",
+    prims: [
+      { t: "box", s: [0.42, 0.05, 0.42], p: [-1.0, 0.09, -0.35], c: "#c9c9c9" },
+      { t: "box", s: [0.3, 0.02, 0.3], p: [-1.0, 0.125, -0.35], c: "#9a9a9a" }
+    ]
+  },
+  {
+    id: "cooler", name: "CPU Cooler (Heatsink + Fan)", short: "CPU Cooler", type: "Cooling", color: "#3d4650",
+    label: [-0.35, 1.2, -0.95],
+    what: "A metal heatsink with a fan that is mounted on top of the CPU, with thermal paste in between. In this model it is lifted up so you can see the CPU underneath.",
+    does: [
+      "Thermal paste carries heat from the CPU to the heatsink base",
+      "The metal fins spread the heat over a large surface",
+      "The fan blows air through the fins and carries the heat away"
+    ],
+    why: "A CPU makes a lot of heat. Without cooling it slows itself down (thermal throttling) or shuts off to avoid permanent damage.",
+    connects: "Sits on the CPU and plugs into the CPU_FAN header on the motherboard.",
+    prims: [
+      { t: "cylinder", s: [0.3, 0.28], p: [-0.35, 0.9, -0.35], c: "#3d4650" },
+      { t: "cylinder", s: [0.12, 0.3], p: [-0.35, 0.91, -0.35], c: "#8fa3b8" }
+    ]
+  },
+  {
+    id: "ram", name: "RAM (Memory)", short: "RAM", type: "Memory", color: "#2b2f5a",
+    label: [0.15, 0.18, -0.65],
+    what: "Random Access Memory, the short-term working memory of the computer. Shown here as two memory sticks.",
+    does: [
+      "Temporarily holds the programs and data that are currently in use",
+      "Lets the CPU read and write data much faster than from a storage drive",
+      "Is volatile, so everything in it is erased when the power is off",
+      "Is usually installed in pairs (dual channel) for more speed"
+    ],
+    why: "More RAM lets you run more programs and bigger files at the same time without slowing down. Too little RAM forces the system to use slow storage as extra memory.",
+    connects: "DIMM slots on the motherboard, next to the CPU.",
+    prims: [
+      { t: "box", s: [0.1, 0.05, 0.9], p: [0.05, 0.09, 0.0], c: "#2b2f5a" },
+      { t: "box", s: [0.1, 0.05, 0.9], p: [0.22, 0.09, 0.0], c: "#2b2f5a" },
+      { t: "box", s: [0.1, 0.052, 0.07], p: [0.05, 0.09, 0.4], c: "#d4af37" },
+      { t: "box", s: [0.1, 0.052, 0.07], p: [0.22, 0.09, 0.4], c: "#d4af37" }
+    ]
+  },
+  {
+    id: "gpu", name: "Graphics Card (GPU)", short: "Graphics Card", type: "Graphics", color: "#20232b",
+    label: [-0.6, 0.62, 1.25],
+    what: "The Graphics Processing Unit, a separate card with its own processor and video memory (VRAM).",
+    does: [
+      "Renders images, video, animation and 3D graphics",
+      "Sends the picture to the monitor through HDMI or DisplayPort",
+      "Takes graphics work away from the CPU",
+      "Also speeds up video editing, 3D design and AI workloads"
+    ],
+    why: "It decides how smooth games, video editing and 3D work will be. Without one, the computer uses the weaker integrated graphics built into the CPU or motherboard.",
+    connects: "PCIe x16 slot on the motherboard, plus power cables from the PSU. The monitor plugs into it.",
+    prims: [
+      { t: "box", s: [1.7, 0.12, 0.45], p: [-0.6, 0.45, 0.8], c: "#20232b" },
+      { t: "cylinder", s: [0.17, 0.02], p: [-0.9, 0.52, 0.8], c: "#4a5568" },
+      { t: "cylinder", s: [0.17, 0.02], p: [-0.3, 0.52, 0.8], c: "#4a5568" }
+    ]
+  },
+  {
+    id: "psu", name: "Power Supply Unit (PSU)", short: "Power Supply", type: "Power", color: "#2f3338",
+    label: [1.6, 0.8, 1.25],
+    what: "The box that supplies power to every part of the computer.",
+    does: [
+      "Converts AC power from the wall outlet into low-voltage DC power (+12V, +5V, +3.3V)",
+      "Delivers power through cables to the motherboard, CPU, GPU and drives",
+      "Has its own fan for cooling and protection circuits (over-voltage, short circuit)"
+    ],
+    why: "A weak or poor-quality PSU can cause crashes, data loss or even damage other parts. Its wattage must cover all components, and an 80 PLUS rating shows how efficient it is.",
+    connects: "Wall outlet, motherboard (24-pin and CPU power), GPU, SSD and HDD.",
+    prims: [
+      { t: "box", s: [1.3, 0.7, 0.9], p: [1.6, 0.35, 1.25], c: "#2f3338" },
+      { t: "cylinder", s: [0.3, 0.02], p: [1.6, 0.71, 1.25], c: "#5a626c" }
+    ]
+  },
+  {
+    id: "ssd", name: "SSD (Solid State Drive)", short: "SSD", type: "Storage", color: "#2f6fb5",
+    label: [1.5, 0.15, 0.2],
+    what: "A storage drive made of flash memory chips with no moving parts.",
+    does: [
+      "Permanently stores the operating system, programs and files",
+      "Keeps the data even when the power is off (non-volatile)",
+      "Reads and writes data much faster than a hard disk",
+      "Connects by SATA cable or directly on the motherboard M.2 slot (NVMe)"
+    ],
+    why: "It makes start-up, program loading and file copying much faster. It is also quiet, light and more resistant to shock than a hard disk.",
+    connects: "SATA data and power cables, or the M.2 slot on the motherboard.",
+    prims: [
+      { t: "box", s: [0.7, 0.08, 0.5], p: [1.5, 0.04, -0.2], c: "#2f6fb5" }
+    ]
+  },
+  {
+    id: "hdd", name: "HDD (Hard Disk Drive)", short: "Hard Disk (HDD)", type: "Storage", color: "#8c939a",
+    label: [1.6, 0.3, -0.65],
+    what: "A storage drive with spinning magnetic platters and a moving read/write head.",
+    does: [
+      "Stores large amounts of data permanently",
+      "Offers a lot of capacity (terabytes) for a low price",
+      "Connects through a SATA data cable and a power cable from the PSU"
+    ],
+    why: "It is best for cheap bulk storage such as videos, backups and archives. It is slower, noisier and more fragile than an SSD because of its moving parts.",
+    connects: "SATA data cable to the motherboard and SATA power cable from the PSU.",
+    prims: [
+      { t: "box", s: [0.9, 0.2, 0.6], p: [1.6, 0.1, -1.2], c: "#8c939a" },
+      { t: "box", s: [0.6, 0.02, 0.4], p: [1.6, 0.21, -1.2], c: "#b8bec4" }
+    ]
+  },
+  {
+    id: "fan", name: "Case Fan", short: "Case Fan", type: "Cooling", color: "#4a5568",
+    label: [-0.6, 0.3, -2.05],
+    what: "A set of spinning blades mounted on the front, rear, top or bottom of the case.",
+    does: [
+      "Intake fans pull cool outside air into the case",
+      "Exhaust fans push hot air out of the case",
+      "Create airflow across the CPU, GPU, drives and motherboard",
+      "Plug into a fan header on the motherboard (3-pin or 4-pin)"
+    ],
+    why: "It keeps the temperature of every part within safe limits. Good airflow makes the computer last longer, run quieter and perform better.",
+    connects: "Fan header on the motherboard, mounted on the case.",
+    prims: [
+      { t: "torus", s: [0.34, 0.04], p: [-0.6, 0.2, -1.55], r: [-90, 0, 0], c: "#4a5568" },
+      { t: "cylinder", s: [0.08, 0.06], p: [-0.6, 0.2, -1.55], c: "#15181d" },
+      { t: "box", s: [0.6, 0.02, 0.1], p: [-0.6, 0.2, -1.55], r: [0, 0, 0], c: "#7a8696" },
+      { t: "box", s: [0.6, 0.02, 0.1], p: [-0.6, 0.2, -1.55], r: [0, 60, 0], c: "#7a8696" },
+      { t: "box", s: [0.6, 0.02, 0.1], p: [-0.6, 0.2, -1.55], r: [0, 120, 0], c: "#7a8696" }
+    ]
+  },
+  {
+    id: "cmos", name: "CMOS Battery", short: "CMOS Battery", type: "Backup power", color: "#d0d0d0",
+    label: [-1.2, 0.15, 0.02],
+    what: "A small coin-cell battery (usually a CR2032) on the motherboard.",
+    does: [
+      "Powers the real-time clock so the date and time stay correct",
+      "Keeps the BIOS/UEFI settings saved while the computer is unplugged"
+    ],
+    why: "If it runs out, the computer may lose its date and time, reset its BIOS settings, or show a CMOS checksum error at start-up. It lasts about 3 to 10 years and is cheap to replace.",
+    connects: "Battery holder on the motherboard.",
+    prims: [
+      { t: "cylinder", s: [0.1, 0.04], p: [-1.4, 0.08, 0.2], c: "#d0d0d0" }
+    ]
+  }
+];
+
+/* ------------------------------------------------------------------
+   BUILD THE 3D MODEL
+------------------------------------------------------------------- */
+const inner = document.getElementById("inner");
+const root = document.getElementById("root");
+const partEls = {};   // id -> array of entities
+const labelEls = [];
+
+function geometryString(p) {
+  if (p.t === "box")      return "primitive: box; width: " + p.s[0] + "; height: " + p.s[1] + "; depth: " + p.s[2];
+  if (p.t === "cylinder") return "primitive: cylinder; radius: " + p.s[0] + "; height: " + p.s[1] + "; segmentsRadial: 24";
+  if (p.t === "torus")    return "primitive: torus; radius: " + p.s[0] + "; radiusTubular: " + p.s[1] + "; segmentsTubular: 24";
+  return "primitive: box";
+}
+
+PARTS.forEach(function (part) {
+  partEls[part.id] = [];
+
+  part.prims.forEach(function (p) {
+    const e = document.createElement("a-entity");
+    e.setAttribute("geometry", geometryString(p));
+    let mat = "color: " + p.c + "; metalness: 0.3; roughness: 0.6";
+    if (p.wire) mat += "; wireframe: true";
+    if (p.o) mat += "; opacity: " + p.o + "; transparent: true";
+    e.setAttribute("material", mat);
+    e.setAttribute("position", p.p.join(" "));
+    if (p.r) e.setAttribute("rotation", p.r.join(" "));
+    e.classList.add("clickable");
+    e.addEventListener("click", function () { select(part.id); });
+    inner.appendChild(e);
+    partEls[part.id].push(e);
+  });
+
+  // floating name label (lies flat on the marker)
+  const lb = document.createElement("a-entity");
+  lb.setAttribute("geometry", "primitive: plane; width: auto; height: auto");
+  lb.setAttribute("material", "color: #000000; opacity: 0.7; transparent: true; side: double");
+  lb.setAttribute("text", "value: " + part.short + "; align: center; width: 3.4; color: #ffffff; side: double");
+  lb.setAttribute("position", part.label.join(" "));
+  lb.setAttribute("rotation", "-90 0 0");
+  lb.classList.add("clickable");
+  lb.addEventListener("click", function () { select(part.id); });
+  inner.appendChild(lb);
+  labelEls.push(lb);
+});
+
+/* ------------------------------------------------------------------
+   USER INTERFACE
+------------------------------------------------------------------- */
+const bar = document.getElementById("bar");
+const info = document.getElementById("info");
+const chips = {};
+let current = -1;
+
+PARTS.forEach(function (part, i) {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.textContent = part.short;
+  b.style.setProperty("--c", part.color);
+  b.onclick = function () { select(part.id); };
+  bar.appendChild(b);
+  chips[part.id] = b;
+});
+
+function showIntro() {
+  info.innerHTML =
+    "<h2>Computer System Unit</h2>" +
+    "<span class='tag'>AR Parts Explorer</span>" +
+    "<p>Point your camera at the Hiro marker to see the parts of a system unit laid out in 3D.</p>" +
+    "<p>Tap a part on the model, or pick a name from the list at the top, to see what it is, what it does and why it is important. Use Prev and Next for a guided tour.</p>";
+}
+
+function select(id) {
+  current = PARTS.findIndex(function (p) { return p.id === id; });
+  const part = PARTS[current];
+
+  // highlight chip
+  Object.keys(chips).forEach(function (k) { chips[k].classList.toggle("on", k === id); });
+  chips[id].scrollIntoView({ inline: "center", block: "nearest" });
+
+  // highlight 3D part
+  Object.keys(partEls).forEach(function (k) {
+    partEls[k].forEach(function (e) {
+      if (k === id) {
+        e.setAttribute("material", "emissive", "#ffd400");
+        e.setAttribute("material", "emissiveIntensity", 0.7);
+      } else {
+        e.setAttribute("material", "emissive", "#000000");
+        e.setAttribute("material", "emissiveIntensity", 0);
+      }
+    });
+  });
+
+  // info panel
+  let list = "";
+  part.does.forEach(function (d) { list += "<li>" + d + "</li>"; });
+  info.innerHTML =
+    "<h2>" + part.name + "</h2>" +
+    "<span class='tag'>" + part.type + "</span>" +
+    "<h3>What it is</h3><p>" + part.what + "</p>" +
+    "<h3>What it does</h3><ul>" + list + "</ul>" +
+    "<h3>Why it is important</h3><p>" + part.why + "</p>" +
+    "<h3>Connects to</h3><p>" + part.connects + "</p>";
+  info.classList.remove("hide");
+  info.scrollTop = 0;
+  document.getElementById("bHide").textContent = "Hide info";
+}
+
+document.getElementById("bPrev").onclick = function () {
+  const i = current <= 0 ? PARTS.length - 1 : current - 1;
+  select(PARTS[i].id);
+};
+document.getElementById("bNext").onclick = function () {
+  const i = (current + 1) % PARTS.length;
+  select(PARTS[i].id);
+};
+
+let labelsOn = true;
+document.getElementById("bLabels").onclick = function () {
+  labelsOn = !labelsOn;
+  labelEls.forEach(function (l) { l.setAttribute("visible", labelsOn); });
+  this.classList.toggle("active", labelsOn);
+};
+
+let spinOn = false;
+document.getElementById("bSpin").onclick = function () {
+  spinOn = !spinOn;
+  if (spinOn) {
+    root.setAttribute("animation", "property: rotation; to: 0 360 0; loop: true; dur: 20000; easing: linear");
+  } else {
+    root.removeAttribute("animation");
+  }
+  this.classList.toggle("active", spinOn);
+};
+
+let sc = 0.3;
+function setScale(v) {
+  sc = Math.max(0.1, Math.min(1, v));
+  root.setAttribute("scale", sc + " " + sc + " " + sc);
+}
+document.getElementById("bSmall").onclick = function () { setScale(sc / 1.2); };
+document.getElementById("bBig").onclick = function () { setScale(sc * 1.2); };
+
+document.getElementById("bHide").onclick = function () {
+  const hidden = info.classList.toggle("hide");
+  this.textContent = hidden ? "Show info" : "Hide info";
+};
+
+/* marker status */
+const marker = document.getElementById("marker");
+const status = document.getElementById("status");
+marker.addEventListener("markerFound", function () {
+  status.textContent = "Marker found - tap a part";
+  status.classList.add("found");
+});
+marker.addEventListener("markerLost", function () {
+  status.textContent = "Point the camera at the Hiro marker";
+  status.classList.remove("found");
+});
+
+showIntro();
+</script>
+</body>
+</html>
